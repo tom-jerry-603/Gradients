@@ -21,7 +21,7 @@ vllm:
 trl:
   beta: 0.001
   max_completion_length: 256
-  temperature: 0.7
+  temperature: 0.8
   use_vllm: true
   vllm_mode: colocate
   vllm_enable_sleep_mode: false
