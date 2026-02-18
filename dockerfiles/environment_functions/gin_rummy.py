@@ -206,10 +206,11 @@ def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: 
     
 
     for i, prompt in enumerate(prompts):
-        
+        print(f"\n=== Starting rollout for Prompt {i+1}/{len(prompts)} ===")
         done = False
         game_id = random.randint(games_to_task_id_range[selected_game][0], games_to_task_id_range[selected_game][1])
         phase = random.choices(PHASE_TYPES, weights=PHASE_WEIGHTS)[0]
+        print(f"Starting Game {game_id} at Phase: {phase}")
         turn_number = 0
         
         payload = {"task_id": game_id, "seed": 42, "opponent": "mcts", "mcts_max_simulations": 25, "mcts_num_rollouts": 1}
@@ -267,6 +268,9 @@ def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: 
 
                 step_state = step_block.get("observation", "")
                 done = step_block.get("done", False)
+
+                if done:
+                    print("Final Observation:\n", step_state)
                 formatted_observation = step_state
                 
             except Exception as e:
@@ -281,12 +285,20 @@ def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: 
 
             turn_number += 1
         
+        
         selected_phase_message = random.choice(selected_phase_messages) if selected_phase_messages else messages
+
+        print("Selected Phase Messages:")
+        for msg in selected_phase_message:
+            print(f"Role: {msg['role']}, Content: {msg['content']}")
+
         turn_prompt_ids: list[list[int]] = []
         turn_completion_ids: list[list[int]] = []
         turn_logprobs: list[list[float]] = []
         turn_rewards: list[float] = []
-        for _ in range(num_generations):
+
+        print("Selected state:", selected_phase_message[-1]["content"])
+        for j in range(num_generations):
             rollout_outputs = generate_rollout_completions(trainer, prompts=[selected_phase_message], as_chat=True)[0]
             prompt_ids = rollout_outputs.get("prompt_ids", [])
             completion_ids = rollout_outputs.get("completion_ids", [])
@@ -299,10 +311,11 @@ def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: 
             if "Action:" in action_to_send:
                 action_to_send = action_to_send.split("Action:")[-1].strip()
 
-            if DEBUG:
-                print(f"Sending Action to Env: {action_to_send}", flush=True)
+            
 
             reward = get_reward(phase, selected_phase_message[-1]["content"], action_to_send)
+
+            print(f"Generated {j+1}th Action: {action_to_send} \n Reward: {reward}\n")
 
             turn_prompt_ids.append(prompt_ids)
             turn_completion_ids.append(completion_ids)
@@ -325,7 +338,7 @@ def rollout_reward_func(completions, **kwargs):
     rewards = kwargs.get("env_rewards") if kwargs else None
     return [float(r) for r in rewards] if rewards is not None else [0.0] * len(completions)
 
-if __name__ == "__main__":
-    game_state = "Game: gin_rummy\nYou are Player 0.\n\nCurrent State:\n\nKnock card: 10\nPrev upcard: 6s\nRepeated move: 0\nCurrent player: 0\nPhase: Draw\n\nPlayer0: Deadwood=31\n+--------------------------+\n|                          |\n|                          |\n|    3d  5d    8d          |\n|Ah2h  4h      8h          |\n+--------------------------+\n\nStock size: 37  Upcard: 6c\nDiscard pile: \n\nPlayer1:\n+--------------------------+\n|                          |\n|                          |\n|                          |\n|                          |\n+--------------------------+\n\n\nLegal Actions:\n  52 -> Player: 0 Action: Draw upcard\n  53 -> Player: 0 Action: Draw stock\n\nYour choice (action ID only):"
-    action = "52"
-    print(get_deadwood(game_state, action))
+# if __name__ == "__main__":
+#     game_state = "Game: gin_rummy\nYou are Player 0.\n\nCurrent State:\n\nKnock card: 10\nPrev upcard: 6s\nRepeated move: 0\nCurrent player: 0\nPhase: Draw\n\nPlayer0: Deadwood=31\n+--------------------------+\n|                          |\n|                          |\n|    3d  5d    8d          |\n|Ah2h  4h      8h          |\n+--------------------------+\n\nStock size: 37  Upcard: 6c\nDiscard pile: \n\nPlayer1:\n+--------------------------+\n|                          |\n|                          |\n|                          |\n|                          |\n+--------------------------+\n\n\nLegal Actions:\n  52 -> Player: 0 Action: Draw upcard\n  53 -> Player: 0 Action: Draw stock\n\nYour choice (action ID only):"
+#     action = "52"
+#     print(get_deadwood(game_state, action))

@@ -4,7 +4,7 @@ TASK_ID="1"
 MODEL="Qwen/Qwen2.5-3B-Instruct"
 DATASET="https://huggingface.co/datasets/TuringEnterprises/Turing-Open-Reasoning/resolve/main/Computational_STEM_QA_Dataset.json?download=true"
 DATASET_TYPE='{
-  "environment_name": "alfworld"
+  "environment_name": "gin_rummy",
 }'
 FILE_FORMAT="s3"
 HOURS_TO_COMPLETE=12
