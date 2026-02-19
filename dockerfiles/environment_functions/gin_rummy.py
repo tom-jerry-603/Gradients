@@ -171,7 +171,8 @@ def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: 
             create_res.raise_for_status()
             rollout_first_prompt_and_completion.initialized = True
             rollout_first_prompt_and_completion.total_rounds = 0
-            rollout_first_prompt_and_completion.winner_rounds = 0
+            rollout_first_prompt_and_completion.total_win_rounds = 0
+            rollout_first_prompt_and_completion.final_10_rounds = []
             rollout_first_prompt_and_completion.messages = []
             print(f"Environment initialized. Rank: {rank}.")
         except Exception as e:
@@ -259,7 +260,10 @@ def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: 
     if done:
         if "WIN" in formatted_observation:
             rollout_first_prompt_and_completion.winner_rounds += 1
-        print(f"\n✅ {rollout_first_prompt_and_completion.total_rounds} Round Finished\n  Result: {'WIN' if 'WIN' in formatted_observation else 'LOSS'}\n  Total Rounds: {rollout_first_prompt_and_completion.total_rounds}\n  Wins: {rollout_first_prompt_and_completion.winner_rounds}\n  Win Rate: {rollout_first_prompt_and_completion.winner_rounds / rollout_first_prompt_and_completion.total_rounds:.2%}\n", flush=True)
+        rollout_first_prompt_and_completion.final_10_rounds.append("WIN" if "WIN" in formatted_observation else "LOSS")
+        if len(rollout_first_prompt_and_completion.final_10_rounds) > 10:
+            rollout_first_prompt_and_completion.final_10_rounds.pop(0)
+        print(f"\n✅ {rollout_first_prompt_and_completion.total_rounds} Round Finished\n  Result: {'WIN' if 'WIN' in formatted_observation else 'LOSS'}\n  Wins: {rollout_first_prompt_and_completion.winner_rounds}\n  Win Rate: {rollout_first_prompt_and_completion.winner_rounds / rollout_first_prompt_and_completion.total_rounds:.2%}\n", flush=True)
         rollout_first_prompt_and_completion.messages = []
 
     rollout_first_prompt_and_completion.messages[1] = {"role": "user", "content": formatted_observation + format_instructions}
