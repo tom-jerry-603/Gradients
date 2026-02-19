@@ -92,7 +92,7 @@ def get_deadwood(game_state: str, action: str | None) -> int:
     # -------------------------
     # Bitmask DP
     # -------------------------
-    card_values = [cid % 13 + 1 for cid in card_ids]
+    card_values = [min(10, cid % 13 + 1) for cid in card_ids]
     total_value = sum(card_values)
 
     @lru_cache(None)
@@ -117,35 +117,20 @@ def get_deadwood(game_state: str, action: str | None) -> int:
 
         
 
-def get_reward(phase:str, game_state: str, action: str) -> float:
+def get_reward(game_state: str, action: str) -> float:
     legal_action_num_list = game_state.split("Legal Actions:\n")[-1].split("\n\nYour choice")[0].strip().split("\n") 
     legal_ids = [line.split("->")[0].strip() for line in legal_action_num_list]
     if action not in legal_ids:
-        return -1.0
+        return -15.0
     
-    if phase == "Discard":
-        if action == '55':
-            return 100.0
-        prev_deadwood = get_deadwood(game_state, None)
-        next_deadwood = get_deadwood(game_state, action)
-        reward = prev_deadwood - next_deadwood
-        return reward
-    elif phase == "Draw" or phase == "FirstUpcard":
-        if action == "52":
-            prev_deadwood = get_deadwood(game_state, None)
-            next_deadwood = get_deadwood(game_state, action)
-            if next_deadwood < prev_deadwood:
-                return 1.0
-            elif next_deadwood < prev_deadwood + 5:
-                return 0.5
-            else:
-                return 0.0
-        else:
-            return 0.3  
-    elif phase == "Knock":
-        prev_deadwood = get_deadwood(game_state, None)
-        next_deadwood = get_deadwood(game_state, action)
-        return prev_deadwood - next_deadwood
+    if action == "55":  # Knock action
+        return 25.0
+    elif action == "53":  # Draw from stock
+        return -5.0
+    
+    prev_deadwood = get_deadwood(game_state, None)
+    next_deadwood = get_deadwood(game_state, action)
+    return prev_deadwood - next_deadwood
 
 
 def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: int = 30) -> dict[str, list]:
@@ -185,6 +170,9 @@ def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: 
             create_res = requests.post(f"{base_url}/reset", json=payload, timeout=300)
             create_res.raise_for_status()
             rollout_first_prompt_and_completion.initialized = True
+            rollout_first_prompt_and_completion.total_rounds = 0
+            rollout_first_prompt_and_completion.winner_rounds = 0
+            rollout_first_prompt_and_completion.messages = []
             print(f"Environment initialized. Rank: {rank}.")
         except Exception as e:
             print(f"CRITICAL: Failed to create environment on rank {rank}: {e}")
@@ -197,135 +185,84 @@ def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: 
     all_completion_ids: list[list[int]] = []
     all_logprobs: list[list[float]] = []
     all_rewards: list[float] = []
+    action_to_sends: list[str] = []
 
     tokenizer = trainer.processing_class
     TIMEOUT = 2400
-    num_generations = getattr(trainer.args, "num_generations", 4)
-    PHASE_TYPES = ["Discard", "Draw", "FirstUpcard", "Knock"]
-    PHASE_WEIGHTS = [0.70, 0.15, 0.05, 0.10]
-    
+    format_instructions = 'Your output must strictly follow this format: "Thought:\nyour thoughts ONLY in text.\n\nAction:\nONLY your action ID (a single number)."'
 
-    for i, prompt in enumerate(prompts):
-        print(f"\n=== Starting rollout for Prompt {i+1}/{len(prompts)} ===")
-        done = False
-        game_id = random.randint(games_to_task_id_range[selected_game][0], games_to_task_id_range[selected_game][1])
-        phase = random.choices(PHASE_TYPES, weights=PHASE_WEIGHTS)[0]
-        print(f"Starting Game {game_id} at Phase: {phase}")
-        turn_number = 0
-        
-        payload = {"task_id": game_id, "seed": 42, "opponent": "mcts", "mcts_max_simulations": 25, "mcts_num_rollouts": 1}
-        
+    if rollout_first_prompt_and_completion.messages == []:
+        rollout_first_prompt_and_completion.total_rounds += 1
         try:
-            reset_res = requests.post(f"{env_endpoint}/reset", json=payload, timeout=TIMEOUT)
+            game_id = random.randint(games_to_task_id_range[selected_game][0], games_to_task_id_range[selected_game][1])
+            initial_payload = {"task_id": game_id, "seed": 42, "opponent": "mcts", "mcts_max_simulations": 25, "mcts_num_rollouts": 1}
+            reset_res = requests.post(f"{env_endpoint}/reset", json=initial_payload, timeout=TIMEOUT)
             reset_res.raise_for_status()
             reset_data = reset_res.json()
             result_block = reset_data["result"]
-
             episode_id = result_block.get("episode_id", "")
-
             current_observation = result_block.get("observation", "")
-            format_instructions = 'Your output must strictly follow this format: "Thought:\nyour thoughts ONLY in text.\n\nAction:\nONLY your action ID (a single number)."'
-
-            if DEBUG:
-                print(f"Env Reset. Observation: {current_observation}", flush=True)
-
-        except Exception as e:
-            print(f"Failed to reset environment (Game {game_id}): {e}")
-            continue
-        
-        selected_phase_messages = []
-        messages = [{"role": "system", "content": f"You are an agent playing {selected_game}. {format_instructions}"}]
-        
-        messages.append({"role": "user", "content": current_observation})
-
-        while not done and (turn_number < max_turns):
-            rollout_outputs = generate_rollout_completions(trainer, prompts=[messages], as_chat=True)[0]
-            if phase in messages[-1]["content"]:
-                selected_phase_messages.append(copy.deepcopy(messages))
-
-            completion_text = tokenizer.decode(rollout_outputs.get("completion_ids", []), skip_special_tokens=True).strip()
-
-            action_to_send = completion_text
-            if action_to_send.endswith("</s>"):
-                action_to_send = action_to_send[:-5]
-
-            if "Action:" in action_to_send:
-                action_to_send = action_to_send.split("Action:")[-1].strip()
-
-            if DEBUG:
-                print(f"Sending Action to Env: {action_to_send}", flush=True)
-
-            try:
-                formatted_observation = ""
-                step_payload = {"action": action_to_send, "episode_id": episode_id}
-                step_res = requests.post(f"{env_endpoint}/step", json=step_payload, timeout=TIMEOUT)
-                step_res.raise_for_status()
-                step_data = step_res.json()
-                step_block = step_data["result"]
-
-                if DEBUG:
-                    print(f"Env Step Response: {step_data}", flush=True)
-
-                step_state = step_block.get("observation", "")
-                done = step_block.get("done", False)
-
-                if done:
-                    print("Final Observation:\n", step_state)
-                formatted_observation = step_state
-                
-            except Exception as e:
-                if DEBUG: 
-                    print(f"Step failed: {e}")
-                formatted_observation = "Invalid Action.\n\n" + formatted_observation + "\n\nPlease provide a valid action following the format instructions."
-                done = False
-
-            messages.append({"role": "assistant", "content": completion_text})
-            if not done:
-                messages.append({"role": "user", "content": formatted_observation})
-
-            turn_number += 1
-        
-        
-        selected_phase_message = random.choice(selected_phase_messages) if selected_phase_messages else messages
-
-        print("Selected Phase Messages:")
-        for msg in selected_phase_message:
-            print(f"Role: {msg['role']}, Content: {msg['content']}")
-
-        turn_prompt_ids: list[list[int]] = []
-        turn_completion_ids: list[list[int]] = []
-        turn_logprobs: list[list[float]] = []
-        turn_rewards: list[float] = []
-
-        print("Selected state:", selected_phase_message[-1]["content"])
-        for j in range(num_generations):
-            rollout_outputs = generate_rollout_completions(trainer, prompts=[selected_phase_message], as_chat=True)[0]
-            prompt_ids = rollout_outputs.get("prompt_ids", [])
-            completion_ids = rollout_outputs.get("completion_ids", [])
-            completion_text = tokenizer.decode(completion_ids, skip_special_tokens=True).strip()
-            logprobs = rollout_outputs.get("logprobs", [])
-            action_to_send = completion_text
-            if action_to_send.endswith("</s>"):
-                action_to_send = action_to_send[:-5]
-
-            if "Action:" in action_to_send:
-                action_to_send = action_to_send.split("Action:")[-1].strip()
-
+            game_rule = "# Game Rules\nGIN RUMMY RULES:\n\nSETUP:\n- 52-card deck, each player receives 7-10 cards (variant dependent)\n- Goal: Form MELDS to minimize DEADWOOD (unmelded cards)\n\nMELDS (Valid Combinations):\n1. SET: 3+ cards of SAME RANK (e.g., 7:spades: 7:hearts: 7:clubs:)\n2. RUN: 3+ CONSECUTIVE cards of SAME SUIT (e.g., 5:diamonds: 6:diamonds: 7:diamonds:)\nExamples:\n- Valid runs: A:spades:-2:spades:-3:spades:, 9:hearts:-10:hearts:-J:hearts:-Q:hearts:, 10:clubs:-J:clubs:-Q:clubs:-K:clubs:\n- Invalid: K:spades:-A:spades:-2:spades: (Ace is LOW only, not wraparound)\n\nCARD NOTATION:\n- Ranks: A(Ace), 2-9, T(10), J(Jack), Q(Queen), K(King)\n- Suits: s(spades:spades:), h(hearts:hearts:), d(diamonds:diamonds:), c(clubs:clubs:)\n- Example: 7c = 7 of clubs, Th = 10 of hearts, As = Ace of spades\n\nGAME PHASES:\n1. FirstUpcard: Choose to draw first upcard or pass (action IDs: 52=Draw upcard, 54=Pass)\n2. Draw: Choose to draw from upcard or stock pile (action IDs: 52=Draw upcard, 53=Draw stock)\n3. Discard: Choose which card to discard (action ID = card's index number, shown in Legal Actions)\n4. Layoff: After opponent knocks, add cards to their melds or pass (action IDs: card indices or 54=Pass)\n5. Knock: Declare end of hand when deadwood ≤ knock_card value\n\nEACH TURN:\n1. DRAW phase: Pick from stock pile (53) OR discard pile upcard (52)\n2. DISCARD phase: Choose ONE card from hand to discard (use card's action ID from Legal Actions)\n\nKNOCKING:\n- When deadwood ≤ knock_card value (8-10), you MAY knock to end hand\n- Gin: ALL cards form melds (0 deadwood) = 25-point bonus\n\nSCORING: Winner scores difference in deadwood point values.\nCard Values: A=1, 2-10=face value, J=11, Q=12, K=13\n\nIMPORTANT: Always respond with the action ID number ONLY, never card names.\n\nCurrent hand and game state will be provided each turn. Focus on minimizing your deadwood and strategically knocking at the right time!"
             
+            initial_messages = [{"role": "system", "content": f"You are an agent playing {selected_game}.\n\n{game_rule}"}]
+            initial_messages.append({"role": "user", "content": current_observation + format_instructions})
+            rollout_first_prompt_and_completion.messages = initial_messages
+        except Exception as e:
+            print(f"CRITICAL: Failed during initial rollout on rank {rank}: {e}")
+            raise e
+    
+    print("\nCurrent State:\n", rollout_first_prompt_and_completion.messages[-1]["content"])
+    
+    for i, prompt in enumerate(prompts):
+        print(f"\n=== Starting rollout for Prompt {i+1}/{len(prompts)} ===")
+        rollout_outputs = generate_rollout_completions(trainer, prompts=[rollout_first_prompt_and_completion.messages], as_chat=True)[0]
+        prompt_ids = rollout_outputs.get("prompt_ids", [])
+        completion_ids = rollout_outputs.get("completion_ids", [])
+        logprobs = rollout_outputs.get("logprobs", [])
+        completion_text = tokenizer.decode(completion_ids, skip_special_tokens=True).strip()
 
-            reward = get_reward(phase, selected_phase_message[-1]["content"], action_to_send)
+        action_to_send = completion_text
+        if action_to_send.endswith("</s>"):
+            action_to_send = action_to_send[:-5]
 
-            print(f"Generated {j+1}th Action: {action_to_send} \n Reward: {reward}\n")
+        if "Action:" in action_to_send:
+            action_to_send = action_to_send.split("Action:")[-1].strip()
 
-            turn_prompt_ids.append(prompt_ids)
-            turn_completion_ids.append(completion_ids)
-            turn_logprobs.append(logprobs)
-            turn_rewards.append(reward)
+        reward = get_reward(rollout_first_prompt_and_completion.messages[-1]["content"], action_to_send)
+        all_prompt_ids.append(prompt_ids)
+        all_completion_ids.append(completion_ids)
+        all_logprobs.append(logprobs)
+        all_rewards.append(reward)
+        action_to_sends.append(action_to_send)
+
+        print(f"Model Output Action: {action_to_send} | Reward: {reward}", flush=True)
+
+    max_reward_id = max(range(len(all_rewards)), key=lambda idx: all_rewards[idx])
+    best_action = action_to_sends[max_reward_id]
+    print(f"\nBest Action Selected: {best_action} with Reward: {all_rewards[max_reward_id]}", flush=True)
+
+    try:
+        formatted_observation = ""
+        step_payload = {"action": best_action, "episode_id": episode_id}
+        step_res = requests.post(f"{env_endpoint}/step", json=step_payload, timeout=TIMEOUT)
+        step_res.raise_for_status()
+        step_data = step_res.json()
+        step_block = step_data["result"]
+        formatted_observation = step_block.get("observation", "") # "Game Over: gin_rummy\nYou were Player 0.\n\nFinal Returns: [44.0, -44.0]\nYour Return: 44.0\nNormalized Score: 0.679\nResult: WIN"
+        done = step_block.get("done", False)
         
-        all_prompt_ids.extend(turn_prompt_ids)
-        all_completion_ids.extend(turn_completion_ids)
-        all_logprobs.extend(turn_logprobs)
-        all_rewards.extend(turn_rewards)
+    except Exception as e:
+        if DEBUG: 
+            print(f"Step failed: {e}")
+        formatted_observation = "Invalid Action.\n\n" + formatted_observation + "\n\nPlease provide a valid action following the format instructions."
+
+    if done:
+        if "WIN" in formatted_observation:
+            rollout_first_prompt_and_completion.winner_rounds += 1
+        print(f"\n✅ {rollout_first_prompt_and_completion.total_rounds} Round Finished\n  Result: {'WIN' if 'WIN' in formatted_observation else 'LOSS'}\n  Total Rounds: {rollout_first_prompt_and_completion.total_rounds}\n  Wins: {rollout_first_prompt_and_completion.winner_rounds}\n  Win Rate: {rollout_first_prompt_and_completion.winner_rounds / rollout_first_prompt_and_completion.total_rounds:.2%}\n", flush=True)
+        rollout_first_prompt_and_completion.messages = []
+
+    rollout_first_prompt_and_completion.messages[1] = {"role": "user", "content": formatted_observation + format_instructions}
 
     return {
         "prompt_ids": all_prompt_ids,
