@@ -139,7 +139,7 @@ def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: 
     import random
     import requests
     import re
-    DEBUG = True
+    DEBUG = False
 
     games_to_task_id_range = {
         "goofspiel": (0, 99999999),
