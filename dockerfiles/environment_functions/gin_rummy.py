@@ -176,6 +176,7 @@ def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: 
             rollout_first_prompt_and_completion.episode_id = None
             rollout_first_prompt_and_completion.total_rounds = 1
             rollout_first_prompt_and_completion.winner_rounds = 0
+            rollout_first_prompt_and_completion.hint_rate = 1.0
             rollout_first_prompt_and_completion.final_10_rounds = []
             rollout_first_prompt_and_completion.messages = []
             if DEBUG:
@@ -197,7 +198,7 @@ def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: 
     TIMEOUT = 2400
     hint = 'Focus on minimizing your deadwood and strategically knocking at the right time.\n'
     format_instructions = 'Your output must strictly follow this format: "Thought:\nyour thoughts ONLY in text.\n\nAction:\nONLY your action ID (a single number)."'
-    if random.random() < 1.1 - (rollout_first_prompt_and_completion.winner_rounds / rollout_first_prompt_and_completion.total_rounds):
+    if random.random() < rollout_first_prompt_and_completion.hint_rate:
         format_instructions = hint + format_instructions
 
     if rollout_first_prompt_and_completion.messages == []:
@@ -266,10 +267,17 @@ def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: 
     if done:
         if "WIN" in formatted_observation:
             rollout_first_prompt_and_completion.winner_rounds += 1
+            rollout_first_prompt_and_completion.hint_rate = max(0.0, rollout_first_prompt_and_completion.hint_rate - 0.05)
+        else:
+            rollout_first_prompt_and_completion.hint_rate = min(1.0, rollout_first_prompt_and_completion.hint_rate + 0.05)
         rollout_first_prompt_and_completion.final_10_rounds.append("WIN" if "WIN" in formatted_observation else "LOSS" if "LOSS" in formatted_observation else "DRAW")
         if len(rollout_first_prompt_and_completion.final_10_rounds) > 10:
             rollout_first_prompt_and_completion.final_10_rounds.pop(0)
-        print(f"\n✅ {rollout_first_prompt_and_completion.total_rounds} Round Finished\n  Result: {'WIN' if 'WIN' in formatted_observation else 'LOSS'}\n  Wins: {rollout_first_prompt_and_completion.final_10_rounds}\n  Win Rate: {rollout_first_prompt_and_completion.winner_rounds / rollout_first_prompt_and_completion.total_rounds:.2%}\n", flush=True)
+        print(f"\n✅ {rollout_first_prompt_and_completion.total_rounds} Round Finished\n  \
+              Result: {'WIN' if 'WIN' in formatted_observation else 'LOSS'}\n  \
+              Wins: {rollout_first_prompt_and_completion.final_10_rounds}\n  \
+              Win Rate: {rollout_first_prompt_and_completion.winner_rounds / rollout_first_prompt_and_completion.total_rounds:.2%}\n \
+              Hint Rate: {rollout_first_prompt_and_completion.hint_rate}", flush=True)
         rollout_first_prompt_and_completion.messages = []
         rollout_first_prompt_and_completion.total_rounds += 1
 
