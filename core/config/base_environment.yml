@@ -25,7 +25,7 @@ trl:
   use_vllm: true
   vllm_mode: colocate
   vllm_enable_sleep_mode: false
-  num_generations: 8
+  num_generations: 4
   rollout_func:
 
 eval_strategy: "no"
@@ -43,7 +43,7 @@ lora_target_linear: true
 lora_fan_in_fan_out:
 
 gradient_accumulation_steps: 1
-micro_batch_size: 8
+micro_batch_size: 4
 optimizer: adamw_bnb_8bit
 lr_scheduler: cosine
 learning_rate: 5e-6

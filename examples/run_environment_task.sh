@@ -4,7 +4,7 @@ TASK_ID="1"
 MODEL="Qwen/Qwen2.5-3B-Instruct"
 DATASET="https://huggingface.co/datasets/TuringEnterprises/Turing-Open-Reasoning/resolve/main/Computational_STEM_QA_Dataset.json?download=true"
 DATASET_TYPE='{
-  "environment_name": "gin_rummy",
+  "environment_name": "gin_rummy"
 }'
 FILE_FORMAT="s3"
 HOURS_TO_COMPLETE=12
@@ -27,8 +27,14 @@ chmod 777 "$OUTPUTS_DIR"
 # Build the downloader image
 docker build -t trainer-downloader -f dockerfiles/trainer-downloader.dockerfile .
 
+docker image rm standalone-text-trainer || true
 # Build the trainer image
 docker build -t standalone-text-trainer -f dockerfiles/standalone-text-trainer.dockerfile .
+
+docker network create mynet || true
+
+docker run -d --name myserver --network mynet -p 8000:8000 phoenixbeaudry/game:mcts-api
+
 
 #Download model and dataset
 echo "Downloading model and dataset..."
@@ -46,6 +52,8 @@ docker run --rm \
 docker run --rm --gpus all \
   --security-opt=no-new-privileges \
   --cap-drop=ALL \
+  --network mynet \
+  -e ENVIRONMENT_SERVER_URLS="http://myserver:8000" \
   --memory=64g \
   --cpus=8 \
   --volume "$CHECKPOINTS_DIR:/cache:rw" \
