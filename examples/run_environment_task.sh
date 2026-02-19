@@ -1,7 +1,7 @@
 #!/bin/bash
 
 TASK_ID="1"
-MODEL="Qwen/Qwen2.5-7B-Instruct"
+MODEL="Qwen/Qwen2.5-3B-Instruct"
 DATASET="https://huggingface.co/datasets/TuringEnterprises/Turing-Open-Reasoning/resolve/main/Computational_STEM_QA_Dataset.json?download=true"
 DATASET_TYPE='{
   "environment_name": "gin_rummy"
