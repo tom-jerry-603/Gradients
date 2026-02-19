@@ -138,7 +138,6 @@ def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: 
     import os
     import random
     import requests
-    import copy
     import re
     DEBUG = False
 
@@ -245,6 +244,7 @@ def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: 
         action_to_sends.append(action_to_send)
         if DEBUG:
             print(f"Model Output Action: {action_to_send} | Reward: {reward}", flush=True)
+    
 
     max_reward_id = max(range(len(all_rewards)), key=lambda idx: all_rewards[idx])
     best_action = action_to_sends[max_reward_id]
