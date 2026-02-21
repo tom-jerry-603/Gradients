@@ -203,7 +203,7 @@ def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: 
     if rollout_first_prompt_and_completion.messages == []:
         try:
             game_id = random.randint(games_to_task_id_range[selected_game][0], games_to_task_id_range[selected_game][1])
-            initial_payload = {"task_id": game_id, "seed": 42, "opponent": "mcts", "mcts_max_simulations": 25, "mcts_num_rollouts": 1}
+            initial_payload = {"task_id": game_id, "seed": random.randint(0, 1000000), "opponent": "mcts", "mcts_max_simulations": 25, "mcts_num_rollouts": 1}
             reset_res = requests.post(f"{env_endpoint}/reset", json=initial_payload, timeout=TIMEOUT)
             reset_res.raise_for_status()
             reset_data = reset_res.json()
