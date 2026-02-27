@@ -14,8 +14,8 @@ output_dir: miner_id_24
 
 rl: grpo
 vllm:
-  tensor_parallel_size: 1
-  gpu_memory_utilization: 0.25
+  tensor_parallel_size: 4
+  gpu_memory_utilization: 0.12
   max_model_len: 2048
   enable_prefix_caching: False
 trl:
@@ -25,7 +25,7 @@ trl:
   use_vllm: true
   vllm_mode: colocate
   vllm_enable_sleep_mode: false
-  num_generations: 4
+  num_generations: 8
   rollout_func:
 
 eval_strategy: "no"
@@ -43,7 +43,7 @@ lora_target_linear: true
 lora_fan_in_fan_out:
 
 gradient_accumulation_steps: 1
-micro_batch_size: 4
+micro_batch_size: 6
 optimizer: adamw_bnb_8bit
 lr_scheduler: cosine
 learning_rate: 5e-6
@@ -55,7 +55,7 @@ bf16: auto
 fp16:
 tf32: false
 
-gradient_checkpointing: false
+gradient_checkpointing: true
 early_stopping_patience:
 resume_from_checkpoint:
 local_rank:
