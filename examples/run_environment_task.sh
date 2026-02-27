@@ -1,7 +1,7 @@
 #!/bin/bash
 
 TASK_ID="1"
-MODEL="Qwen/Qwen2.5-3B-Instruct"
+MODEL="Qwen/Qwen2.5-7B-Instruct"
 DATASET="https://huggingface.co/datasets/TuringEnterprises/Turing-Open-Reasoning/resolve/main/Computational_STEM_QA_Dataset.json?download=true"
 DATASET_TYPE='{
   "environment_name": "gin_rummy"
@@ -33,7 +33,10 @@ docker build -t standalone-text-trainer -f dockerfiles/standalone-text-trainer.d
 
 docker network create mynet || true
 
-docker run -d --name myserver --network mynet -p 8000:8000 phoenixbeaudry/game:mcts-api
+docker run -d --name myserver1 --network mynet -p 8000:8000 phoenixbeaudry/game:mcts-api
+docker run -d --name myserver2 --network mynet -p 8000:8001 phoenixbeaudry/game:mcts-api
+docker run -d --name myserver3 --network mynet -p 8000:8002 phoenixbeaudry/game:mcts-api
+docker run -d --name myserver4 --network mynet -p 8000:8003 phoenixbeaudry/game:mcts-api
 
 
 #Download model and dataset
@@ -53,7 +56,7 @@ docker run --rm --gpus all \
   --security-opt=no-new-privileges \
   --cap-drop=ALL \
   --network mynet \
-  -e ENVIRONMENT_SERVER_URLS="http://myserver:8000" \
+  -e ENVIRONMENT_SERVER_URLS="http://myserver:8000,http://myserver:8001,http://myserver:8002,http://myserver:8003" \
   --memory=64g \
   --cpus=8 \
   --volume "$CHECKPOINTS_DIR:/cache:rw" \
