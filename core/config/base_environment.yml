@@ -1,4 +1,4 @@
-base_model: Qwen/Qwen2.5-3B-Instruct
+base_model: Qwen/Qwen2.5-7B-Instruct
 model_type: AutoModelForCausalLM
 tokenizer_type: AutoTokenizer
 
@@ -15,7 +15,7 @@ output_dir: miner_id_24
 rl: grpo
 vllm:
   tensor_parallel_size: 4
-  gpu_memory_utilization: 0.12
+  gpu_memory_utilization: 0.5
   max_model_len: 2048
   enable_prefix_caching: False
 trl:

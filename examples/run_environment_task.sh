@@ -33,10 +33,7 @@ docker build -t standalone-text-trainer -f dockerfiles/standalone-text-trainer.d
 
 docker network create mynet || true
 
-docker run -d --name myserver1 --network mynet -p 8000:8000 phoenixbeaudry/game:mcts-api
-docker run -d --name myserver2 --network mynet -p 8000:8001 phoenixbeaudry/game:mcts-api
-docker run -d --name myserver3 --network mynet -p 8000:8002 phoenixbeaudry/game:mcts-api
-docker run -d --name myserver4 --network mynet -p 8000:8003 phoenixbeaudry/game:mcts-api
+docker run -d --name myserver --network mynet -p 8000:8000 phoenixbeaudry/game:mcts-api
 
 
 #Download model and dataset
@@ -56,7 +53,7 @@ docker run --rm --gpus all \
   --security-opt=no-new-privileges \
   --cap-drop=ALL \
   --network mynet \
-  -e ENVIRONMENT_SERVER_URLS="http://myserver:8000,http://myserver:8001,http://myserver:8002,http://myserver:8003" \
+  -e ENVIRONMENT_SERVER_URLS="http://myserver:8000" \
   --memory=64g \
   --cpus=8 \
   --volume "$CHECKPOINTS_DIR:/cache:rw" \
