@@ -150,20 +150,18 @@ def did_winner_change(previous_tournament: TournamentData | None, latest_tournam
 
     Returns True if:
     - No previous tournament exists (first tournament)
-    - Latest winner is not EMISSION_BURN_HOTKEY and differs from previous winner
+    - Latest winner is a real hotkey (not EMISSION_BURN_HOTKEY)
 
     Returns:
-        True if winner changed, False if same winner defended
+        True if winner should be treated as a new winner, False if defending champion won via placeholder
     """
     if not previous_tournament:
         return True
 
-    # If latest winner is not EMISSION_BURN_HOTKEY, a new challenger won
-    # If it IS EMISSION_BURN_HOTKEY, the defending champion won
-    if (
-        previous_tournament.winner_hotkey != latest_tournament.winner_hotkey
-        and latest_tournament.winner_hotkey != EMISSION_BURN_HOTKEY
-    ):
+    # EMISSION_BURN_HOTKEY explicitly marks a defending champion win.
+    # Any real hotkey winner should be treated as "new winner" for fresh perf diff calc,
+    # even if it's the same hotkey as a previous tournament.
+    if latest_tournament.winner_hotkey != EMISSION_BURN_HOTKEY:
         return True
 
     return False
