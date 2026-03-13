@@ -40,78 +40,96 @@ def parse_liars_dice_state(text):
 
 
 def binom_prob_at_least(n, k, p):
-    """P(X >= k) for X ~ Binomial(n,p)"""
     prob = 0.0
     for i in range(k, n+1):
         prob += math.comb(n, i) * (p**i) * ((1-p)**(n-i))
     return prob
 
 
-def get_reward(rollout_first_prompt_and_completion, action):
+def count_matches(dice, face):
+    count = 0
+    for d in dice:
+        if face == 6:
+            if d == 6:
+                count += 1
+        else:
+            if d == face or d == 6:
+                count += 1
+    return count
+
+
+def get_reward(state, action):
+
     action = int(action)
 
-    current_bid = rollout_first_prompt_and_completion.current_bid
-    legal_actions = rollout_first_prompt_and_completion.legal_actions
-    my_dice = rollout_first_prompt_and_completion.current_dice
-    total_dice = rollout_first_prompt_and_completion.total_dice_num
+    current_bid = state.current_bid
+    legal_actions = state.legal_actions
+    my_dice = state.current_dice
+    total_dice = state.total_dice_num
 
-    # illegal move
     if action not in legal_actions:
         return -1.0
+
+    other_dice = total_dice - len(my_dice)
 
     quantity = current_bid["quantity"]
     face = current_bid["face"]
 
-    my_count = 0
-    for d in my_dice:
-        if face == 6:
-            if d == 6:
-                my_count += 1
-        else:
-            if d == face or d == 6:
-                my_count += 1
+    my_matches = count_matches(my_dice, face)
 
-    other_dice = total_dice - len(my_dice)
-    need_from_others = max(0, quantity - my_count)
+    need = max(0, quantity - my_matches)
 
-    # probability a die matches
-    if face == 6:
-        p = 1/6
-    else:
-        p = 1/3
+    p = 1/6 if face == 6 else 1/3
 
-    prob_bid_true = binom_prob_at_least(other_dice, need_from_others, p)
+    prob_bid_true = binom_prob_at_least(other_dice, need, p)
 
-    # ---------- action: say liar ----------
+    # ----------------
+    # CALL LIAR
+    # ----------------
     if action == 60:
-        reward = 1 - prob_bid_true
-        return reward * 2 - 1  # normalize to [-1,1]
 
-    # ---------- action: make bid ----------
+        reward_prob = 1 - prob_bid_true
+
+        # bonus if bid is extremely unlikely
+        bluff_bonus = 0
+        if prob_bid_true < 0.2:
+            bluff_bonus = 0.3
+
+        reward = reward_prob + bluff_bonus
+
+        return max(-1, min(1, reward))
+
+    # ----------------
+    # MAKE BID
+    # ----------------
+
     bid_str = legal_actions[action]
     q, f = map(int, bid_str.split("-"))
 
-    my_count_new = 0
-    for d in my_dice:
-        if f == 6:
-            if d == 6:
-                my_count_new += 1
-        else:
-            if d == f or d == 6:
-                my_count_new += 1
+    my_matches_new = count_matches(my_dice, f)
 
-    need_new = max(0, q - my_count_new)
+    need_new = max(0, q - my_matches_new)
 
-    if f == 6:
-        p_new = 1/6
-    else:
-        p_new = 1/3
+    p_new = 1/6 if f == 6 else 1/3
 
-    prob_new_bid_true = binom_prob_at_least(other_dice, need_new, p_new)
+    prob_new = binom_prob_at_least(other_dice, need_new, p_new)
 
-    reward = prob_new_bid_true
+    # main probability reward
+    reward_prob = prob_new
 
-    return reward * 2 - 1
+    # risk penalty for impossible bids
+    risk_penalty = 0
+    if prob_new < 0.05:
+        risk_penalty = -0.5
+
+    # bluff reward (moderate risk)
+    bluff_bonus = 0
+    if 0.1 < prob_new < 0.4:
+        bluff_bonus = 0.2
+
+    reward = reward_prob + risk_penalty + bluff_bonus
+
+    return max(-1, min(1, reward))
 
 def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: int = 30) -> dict[str, list]:
     from trl.experimental.openenv import generate_rollout_completions
