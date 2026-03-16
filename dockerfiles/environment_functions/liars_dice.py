@@ -60,12 +60,38 @@ def count_matches(dice, face):
 
 def get_reward(state, action):
 
-    action = int(action)
+    try:
+        action = int(action)
+    except:
+        return -1.0
 
     current_bid = state.current_bid
     legal_actions = state.legal_actions
     my_dice = state.current_dice
     total_dice = state.total_dice_num
+    
+    # FIRST BID CASE
+    if current_bid is None:
+
+        if action == 60:   # cannot call liar on first move
+            return -1.0
+
+        bid_str = legal_actions.get(action)
+        if bid_str is None:
+            return -1.0
+
+        q, f = map(int, bid_str.split("-"))
+
+        other_dice = total_dice - len(my_dice)
+
+        my_matches = count_matches(my_dice, f)
+        need = max(0, q - my_matches)
+
+        p = 1/6 if f == 6 else 1/3
+
+        prob = binom_prob_at_least(other_dice, need, p)
+
+        return max(-1, min(1, prob))
 
     if action not in legal_actions:
         return -1.0
@@ -137,7 +163,7 @@ def rollout_first_prompt_and_completion(prompts: list[str], trainer, max_turns: 
     import random
     import requests
     import re
-    DEBUG = False
+    DEBUG = True
 
     games_to_task_id_range = {
         "goofspiel": (0, 99999999),

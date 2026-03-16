@@ -4,7 +4,7 @@ TASK_ID="1"
 MODEL="Qwen/Qwen2.5-7B-Instruct"
 DATASET="https://huggingface.co/datasets/TuringEnterprises/Turing-Open-Reasoning/resolve/main/Computational_STEM_QA_Dataset.json?download=true"
 DATASET_TYPE='{
-  "environment_name": "gin_rummy"
+  "environment_name": "liars_dice"
 }'
 FILE_FORMAT="s3"
 HOURS_TO_COMPLETE=12
@@ -28,7 +28,7 @@ chmod 777 "$OUTPUTS_DIR"
 docker build -t trainer-downloader -f dockerfiles/trainer-downloader.dockerfile .
 
 docker image rm standalone-text-trainer || true
-# Build the trainer image
+
 docker build -t standalone-text-trainer -f dockerfiles/standalone-text-trainer.dockerfile .
 
 docker network create mynet || true
